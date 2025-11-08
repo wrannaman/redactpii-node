@@ -1,0 +1,85 @@
+{
+  "name": "@redactpii/node",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Zero dependencies, blazing fast regex-based PII redaction with optional compliance dashboard integration. The modern fork of the abandoned 786k-download library.",
+  "main": "lib/index.js",
+  "module": "lib/index.mjs",
+  "types": "lib/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/index.d.ts",
+      "import": "./lib/index.mjs",
+      "require": "./lib/index.js"
+    }
+  },
+  "packageManager": "pnpm@10.20.0",
+  "scripts": {
+    "build": "del lib && tsc --pretty && rollup -c",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint 'src/**/*.ts' 'test/**/*.ts'",
+    "lint:fix": "eslint 'src/**/*.ts' 'test/**/*.ts' --fix",
+    "prepublishOnly": "pnpm run verify_all && pnpm run build",
+    "verify_all": "pnpm run typecheck && pnpm test && pnpm run test_prettier",
+    "verify_all_strict": "pnpm run typecheck && pnpm run lint && pnpm test && pnpm run test_prettier",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "coverage": "vitest run --coverage",
+    "test_prettier": "prettier './+(src|test)/**/*.+(js|ts|tsx)' --list-different",
+    "prettier": "prettier './+(src|test)/**/*.+(js|ts|tsx)' --write",
+    "prepare": "husky"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/wrannaman/redactpii-node.git"
+  },
+  "author": "Andrew Pierno - RedactPII Team",
+  "license": "MIT",
+  "files": [
+    "lib",
+    "README.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "pii",
+    "redaction",
+    "privacy",
+    "gdpr",
+    "compliance",
+    "data-protection",
+    "security",
+    "redactor",
+    "anonymization"
+  ],
+  "devDependencies": {
+    "@rollup/plugin-json": "^6.1.0",
+    "@rollup/plugin-node-resolve": "^16.0.3",
+    "@rollup/plugin-typescript": "^12.3.0",
+    "@types/node": "^24.10.0",
+    "@typescript-eslint/eslint-plugin": "7.18.0",
+    "@typescript-eslint/parser": "7.18.0",
+    "@vitest/coverage-v8": "^4.0.8",
+    "del-cli": "^7.0.0",
+    "eslint": "8.57.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^16.2.6",
+    "prettier": "^3.6.2",
+    "rollup": "^4.53.1",
+    "tslib": "^2.8.1",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.8"
+  },
+  "prettier": {
+    "singleQuote": true,
+    "printWidth": 120
+  },
+  "lint-staged": {
+    "*.{ts,tsx}": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "*.{js,json,md}": [
+      "prettier --write"
+    ]
+  }
+}
