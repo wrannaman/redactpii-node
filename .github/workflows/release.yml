@@ -15,6 +15,24 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get commit SHA from tag
+        id: get-commit
+        run: |
+          COMMIT_SHA=$(git rev-parse ${{ github.ref }})
+          echo "commit_sha=$COMMIT_SHA" >> $GITHUB_OUTPUT
+          echo "Waiting for CI on commit: $COMMIT_SHA"
+
+      - name: Wait for CI to pass
+        uses: lewagon/wait-on-check-action@v1.3.4
+        with:
+          ref: ${{ steps.get-commit.outputs.commit_sha }}
+          check-name: 'CI / test'
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          wait-interval: 10
+          allowed-conclusions: success
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
