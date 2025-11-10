@@ -94,6 +94,13 @@ function main() {
     // Tag doesn't exist, which is good
   }
 
+  // Run quality checks before releasing
+  console.log('\n🧪 Running pre-release quality checks...\n');
+  runCommand('pnpm run typecheck', 'Type checking');
+  runCommand('pnpm test', 'Running tests');
+  runCommand('pnpm run build', 'Building package');
+  console.log('\n✅ All quality checks passed!\n');
+
   // Update version in package.json
   updatePackageJson(newVersion);
   console.log(`✅ Updated package.json to version ${newVersion}`);
