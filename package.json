@@ -27,6 +27,7 @@
     "coverage": "vitest run --coverage",
     "test_prettier": "prettier './+(src|test)/**/*.+(js|ts|tsx)' --list-different",
     "prettier": "prettier './+(src|test)/**/*.+(js|ts|tsx)' --write",
+    "release": "node scripts/release.js",
     "prepare": "husky"
   },
   "repository": {
