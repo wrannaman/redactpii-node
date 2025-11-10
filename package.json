@@ -1,6 +1,6 @@
 {
   "name": "@redactpii/node",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "type": "module",
   "description": "Zero dependencies, blazing fast regex-based PII redaction with optional compliance dashboard integration. The modern fork of the abandoned 786k-download library.",
   "main": "lib/index.js",
@@ -33,6 +33,7 @@
     "type": "git",
     "url": "https://github.com/wrannaman/redactpii-node.git"
   },
+  "homepage": "https://redactpii.com",
   "author": "Andrew Pierno - RedactPII Team",
   "license": "MIT",
   "files": [
