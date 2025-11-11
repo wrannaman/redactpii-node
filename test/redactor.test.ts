@@ -77,6 +77,107 @@ describe('Redactor', () => {
       expect(redactor.redact(text)).toBe(text);
     });
 
+    it('should replace PII with type-specific tokens by default', () => {
+      const redactor = new Redactor();
+      const cases: Array<{ input: string; expected: string }> = [
+        { input: 'test@example.com', expected: 'EMAIL_ADDRESS' },
+        { input: '1234-5678-9012-3456', expected: 'CREDIT_CARD_NUMBER' },
+        { input: '555-123-4567', expected: 'PHONE_NUMBER' },
+        { input: '123-45-6789', expected: 'US_SOCIAL_SECURITY_NUMBER' },
+        { input: 'Hi John Smith', expected: 'PERSON_NAME' },
+      ];
+
+      for (const testCase of cases) {
+        const { input, expected } = testCase;
+        expect(redactor.redact(input)).toBe(expected);
+      }
+    });
+
+    it('should reset anonymization state between redact calls', () => {
+      const redactor = new Redactor({ rules: { EMAIL: true }, anonymize: true });
+      const firstResult = redactor.redact('anne@example.com');
+      const secondResult = redactor.redact('bob@example.com');
+
+      expect(firstResult).toBe('EMAIL_1');
+      expect(secondResult).toBe('EMAIL_1');
+    });
+
+    it('should treat case variations as the same anonymized value', () => {
+      const redactor = new Redactor({ rules: { EMAIL: true }, anonymize: true });
+      const result = redactor.redact('Contact Anne@example.com and anne@example.com');
+
+      expect(result).toBe('Contact EMAIL_1 and EMAIL_1');
+    });
+
+    it('should combine aggressive email detection with custom rules', () => {
+      const redactor = new Redactor({
+        rules: { EMAIL: true },
+        aggressive: true,
+        customRules: [/\bREF#\d+\b/g],
+      });
+      const input = 'Contact user [at] example [dot] com with code REF#12345';
+      const output = redactor.redact(input);
+
+      expect(output).toBe('Contact EMAIL_ADDRESS with code DIGITS');
+    });
+
+    it('should respect aggressive flag when custom rules are present', () => {
+      const redactor = new Redactor({
+        rules: { EMAIL: true },
+        aggressive: false,
+        customRules: [/\bREF#\d+\b/g],
+      });
+      const input = 'Contact user [at] example [dot] com with code REF#12345';
+      const output = redactor.redact(input);
+
+      expect(output).toBe('Contact user [at] example [dot] com with code DIGITS');
+    });
+
+    it('should anonymize custom rule matches consistently', () => {
+      const redactor = new Redactor({
+        rules: {},
+        customRules: [/ID-\d+/g],
+        anonymize: true,
+      });
+      const output = redactor.redact('IDs: ID-77777, ID-77777');
+
+      expect(output).toBe('IDs: PII_1, PII_1');
+    });
+
+    it('should assign unique anonymized tokens for different custom matches', () => {
+      const redactor = new Redactor({
+        rules: {},
+        customRules: [/ID-\d+/g],
+        anonymize: true,
+      });
+      const output = redactor.redact('IDs: ID-11111, ID-22222');
+
+      expect(output).toBe('IDs: PII_1, PII_2');
+    });
+
+    it('should apply custom rules after built-in replacements', () => {
+      const redactor = new Redactor({
+        rules: { SSN: true },
+        customRules: [/\b\d{4}\b/g],
+      });
+      const input = 'SSN 123-45-6789 ext 1234';
+      const output = redactor.redact(input);
+
+      expect(output).toBe('SSN US_SOCIAL_SECURITY_NUMBER ext DIGITS');
+    });
+
+    it('should honor global replacement with custom rules', () => {
+      const redactor = new Redactor({
+        rules: { EMAIL: true },
+        customRules: [/\bREF#\d+\b/g],
+        globalReplaceWith: '[MASKED]',
+      });
+      const input = 'Contact test@example.com with code REF#12345';
+      const output = redactor.redact(input);
+
+      expect(output).toBe('Contact [MASKED] with code [MASKED]');
+    });
+
     it('should anonymize with unique IDs when enabled', () => {
       const redactor = new Redactor({ rules: { EMAIL: true }, anonymize: true });
       const result = redactor.redact('Contact anne@example.com and anne@example.com again');
@@ -135,6 +236,26 @@ describe('Redactor', () => {
     it('should respect disabled rules', () => {
       const redactor = new Redactor({ rules: { EMAIL: false } });
       expect(redactor.hasPII('test@example.com')).toBe(false);
+    });
+
+    it('should detect obfuscated emails and custom tokens in aggressive mode', () => {
+      const redactor = new Redactor({
+        rules: { EMAIL: true },
+        aggressive: true,
+        customRules: [/\bREF#\d+\b/g],
+      });
+
+      expect(redactor.hasPII('user [at] example [dot] com')).toBe(true);
+      expect(redactor.hasPII('Use code REF#54321')).toBe(true);
+    });
+
+    it('should not leak regex state between calls', () => {
+      const redactor = new Redactor({ rules: { EMAIL: true } });
+
+      expect(redactor.hasPII('test@example.com')).toBe(true);
+      expect(redactor.hasPII('No sensitive data here')).toBe(false);
+      expect(redactor.hasPII('another@example.com')).toBe(true);
+      expect(redactor.hasPII('Still nothing sensitive')).toBe(false);
     });
   });
 
@@ -203,6 +324,38 @@ describe('Redactor', () => {
       const redactor = new Redactor();
       expect(redactor.redactObject({})).toEqual({});
       expect(redactor.redactObject({ items: [] })).toEqual({ items: [] });
+    });
+
+    it('should preserve dates as ISO strings', () => {
+      const redactor = new Redactor();
+      const eventDate = new Date('2023-01-01T00:00:00.000Z');
+      const result = redactor.redactObject({ eventDate });
+
+      expect(result.eventDate).toBe(eventDate.toISOString());
+    });
+
+    it('should redact values provided via toJSON', () => {
+      class Payload {
+        constructor(private readonly value: string) {}
+
+        toJSON(): { contact: string } {
+          return { contact: this.value };
+        }
+      }
+
+      const redactor = new Redactor({ rules: { EMAIL: true } });
+      const result = redactor.redactObject({ payload: new Payload('test@example.com') });
+      const serialized = JSON.stringify(result);
+
+      expect(serialized).toContain('"contact":"EMAIL_ADDRESS"');
+    });
+
+    it('should convert Map instances to plain objects during cloning', () => {
+      const redactor = new Redactor();
+      const meta = new Map<string, string>([['secret', 'test@example.com']]);
+      const result = redactor.redactObject({ meta });
+
+      expect(result.meta).toEqual({});
     });
   });
 
