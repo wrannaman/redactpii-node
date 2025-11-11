@@ -3,6 +3,7 @@ name: CI
 on:
   push:
     branches: ['*']
+    tags: ['v*']
   pull_request:
     branches: ['*']
 
@@ -28,6 +29,7 @@ jobs:
         with:
           node-version: ${{ matrix.node-version }}
           cache: 'pnpm'
+          registry-url: 'https://registry.npmjs.org'
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -44,3 +46,8 @@ jobs:
       - name: Check formatting
         run: pnpm run test_prettier
 
+      - name: Publish to NPM
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: pnpm publish --access public --no-git-checks
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
