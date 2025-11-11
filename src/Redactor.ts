@@ -23,7 +23,10 @@ export class Redactor {
       globalReplaceWith,
     } = options;
 
-    this.apiUrl = apiUrl ?? 'https://api.redactpii.com/v1/events';
+    // Only set apiUrl if apiKey is provided (dashboard is being used)
+    // If apiKey is provided but apiUrl is not, use the default endpoint
+    const hasApiKey = apiKey !== null && apiKey !== undefined && apiKey !== '';
+    this.apiUrl = hasApiKey ? (apiUrl ?? 'https://api.redactpii.com/v1/events') : (apiUrl ?? '');
     this.apiKey = apiKey ?? null;
     this.failSilent = failSilent;
     this.hookTimeout = hookTimeout;
@@ -187,7 +190,7 @@ export class Redactor {
    * Spec-compliant dashboard hook - sends redaction events to dashboard
    */
   private async _phoneHome(events: RedactionEvent[]): Promise<void> {
-    if (this.apiKey === null || this.apiKey === '') {
+    if (this.apiKey === null || this.apiKey === '' || this.apiUrl === '') {
       return;
     }
 
