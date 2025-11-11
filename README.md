@@ -2,16 +2,23 @@
 
 [![NPM Package](https://badge.fury.io/js/%40redactpii%2Fnode.svg)](https://www.npmjs.com/package/@redactpii/node)
 
-> **⚡ Zero-dependency, blazing-fast regex-based PII redaction with optional compliance dashboard integration.**
+> **⚡ Simple, local, offline-only PII redaction. Zero dependencies. Works completely standalone. Optional dashboard for compliance audit trails only.**
 
-Built for the modern AI stack. Protect PII **before** it hits OpenAI, Anthropic, or LangChain with **optional dashboard integration** for SOC 2 & HIPAA audit trails.
+A simple, local, offline PII redaction tool. Works perfectly without any dashboard or API keys. Optional dashboard integration available for SOC 2/HIPAA compliance audit trails.
 
-## ⚡ Zero Dependencies. Blazing Fast. Enterprise Ready.
+## 🎯 Simple & Local First
+
+**This tool works 100% offline, locally, with zero external dependencies.** No API keys required. No internet connection needed. No dashboard signup needed.
+
+The dashboard is **completely optional** - it's only for compliance teams who need audit trails (SOC 2/HIPAA). If you just need to redact PII locally, you can ignore the dashboard entirely.
+
+## ⚡ Zero Dependencies. Blazing Fast. Works Offline.
 
 - **<1ms per operation** - Optimized regex engine
 - **Zero external dependencies** - Pure TypeScript, no bloat
-- **Dashboard integration** - SOC 2/HIPAA audit trails (optional)
-- **Zero-trust security** - Never sends PII, only metadata
+- **100% local & offline** - Works without internet, API keys, or dashboard
+- **Optional dashboard** - Only for compliance audit trails (SOC 2/HIPAA)
+- **Zero-trust security** - Never sends PII, only metadata (if dashboard enabled)
 - **TypeScript first** - Full type safety and IDE support
 
 ### Requirements
@@ -30,20 +37,23 @@ pnpm add @redactpii/node
 yarn add @redactpii/node
 ```
 
-### 🔥 Basic Usage
+### 🔥 Basic Usage - No Dashboard Required
 
 ```typescript
 import { Redactor } from '@redactpii/node';
 
+// Works completely offline - no API keys, no dashboard, no internet needed
 const redactor = new Redactor();
 const clean = redactor.redact('Hi David Johnson, call 555-555-5555');
 
 // Result: "Hi PERSON_NAME, call PHONE_NUMBER"
 ```
 
-### 🛡️ Enterprise Compliance (SOC 2/HIPAA Ready)
+That's it! The tool works perfectly fine without any dashboard or API keys. Everything runs locally on your machine.
 
-Enable **optional dashboard integration** for audit trails:
+### 🛡️ Optional: Dashboard for Compliance Audit Trails
+
+**Only enable this if you need compliance audit logs (SOC 2/HIPAA).** The dashboard is completely optional and not required for the tool to work.
 
 ```typescript
 import { Redactor } from '@redactpii/node';
@@ -221,11 +231,13 @@ const redactor = new Redactor({
 redactor.redact('test@example.com'); // "[REDACTED]"
 ```
 
-### 🛡️ Dashboard Hook Configuration
+### 🛡️ Optional Dashboard Hook Configuration
+
+**Only configure this if you need compliance audit trails.** The tool works perfectly without it.
 
 ```typescript
 const redactor = new Redactor({
-  apiKey: 'your-api-key',
+  apiKey: 'your-api-key', // Optional - only for compliance dashboard
   apiUrl: 'https://api.redactpii.com/v1/events', // Optional, defaults to this
   failSilent: true, // Default: true (fail silently if dashboard is down)
   hookTimeout: 500, // Default: 500ms timeout for dashboard requests
@@ -284,4 +296,4 @@ We welcome contributions! This library powers compliance for thousands of applic
 
 ---
 
-**Built for the modern AI stack with optional SOC 2/HIPAA audit logs.**
+**Simple, local, offline PII redaction. Works standalone. Optional dashboard for compliance audit trails only.**
