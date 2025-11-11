@@ -4,10 +4,6 @@ on:
   push:
     tags:
       - 'v*'
-    branches:
-      - main
-    paths:
-      - 'package.json'
 
 jobs:
   publish:
@@ -22,33 +18,14 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Get commit SHA
+      - name: Get commit SHA from tag
         id: get-commit
         run: |
-          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
-            # If triggered by tag, get the commit SHA from the tag
-            COMMIT_SHA=$(git rev-parse ${{ github.ref }})
-          else
-            # If triggered by branch push, use the current commit SHA
-            COMMIT_SHA=${{ github.sha }}
-          fi
+          COMMIT_SHA=$(git rev-parse ${{ github.ref }})
           echo "commit_sha=$COMMIT_SHA" >> $GITHUB_OUTPUT
           echo "Waiting for CI on commit: $COMMIT_SHA"
 
-      - name: Check if this is a version bump commit
-        id: check-bump
-        run: |
-          COMMIT_MSG=$(git log -1 --pretty=%B ${{ steps.get-commit.outputs.commit_sha }})
-          if [[ "$COMMIT_MSG" == *"chore: bump"* ]] || [[ "${{ github.ref }}" == refs/tags/v* ]]; then
-            echo "is_release=true" >> $GITHUB_OUTPUT
-            echo "This is a release commit/tag"
-          else
-            echo "is_release=false" >> $GITHUB_OUTPUT
-            echo "Not a release commit, skipping"
-          fi
-
       - name: Wait for CI to pass
-        if: steps.check-bump.outputs.is_release == 'true'
         uses: lewagon/wait-on-check-action@v1.3.4
         with:
           ref: ${{ steps.get-commit.outputs.commit_sha }}
@@ -58,13 +35,11 @@ jobs:
           allowed-conclusions: success
 
       - name: Setup pnpm
-        if: steps.check-bump.outputs.is_release == 'true'
         uses: pnpm/action-setup@v4
         with:
           version: 10.20.0
 
       - name: Setup Node.js
-        if: steps.check-bump.outputs.is_release == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: 20.x
@@ -72,23 +47,18 @@ jobs:
           registry-url: 'https://registry.npmjs.org'
 
       - name: Install dependencies
-        if: steps.check-bump.outputs.is_release == 'true'
         run: pnpm install --frozen-lockfile
 
       - name: Run type check
-        if: steps.check-bump.outputs.is_release == 'true'
         run: pnpm run typecheck
 
       - name: Run tests
-        if: steps.check-bump.outputs.is_release == 'true'
         run: pnpm test
 
       - name: Build
-        if: steps.check-bump.outputs.is_release == 'true'
         run: pnpm run build
 
       - name: Publish to NPM
-        if: steps.check-bump.outputs.is_release == 'true'
         run: pnpm publish --access public --no-git-checks
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
