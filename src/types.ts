@@ -28,4 +28,7 @@ export interface RedactorOptions {
 
   // Anonymization: replace same values with same tokens (e.g., "anne@example.com" → "EMAIL_1" consistently)
   anonymize?: boolean;
+
+  // Aggressive mode: use more permissive patterns to catch obfuscated or unusual formatting
+  aggressive?: boolean;
 }

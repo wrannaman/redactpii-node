@@ -12,6 +12,7 @@ export class Redactor {
   private activeRules: Array<{ pattern: RegExp; name: string }> = [];
   private globalReplaceWith: string | undefined;
   private anonymize: boolean;
+  private aggressive: boolean;
   private anonymizationMap: Map<string, string> = new Map();
   private anonymizationCounters: Map<string, number> = new Map();
 
@@ -25,6 +26,7 @@ export class Redactor {
       customRules = [],
       globalReplaceWith,
       anonymize = false,
+      aggressive = false,
     } = options;
 
     // Only set apiUrl if apiKey is provided (dashboard is being used)
@@ -36,6 +38,7 @@ export class Redactor {
     this.hookTimeout = hookTimeout;
     this.globalReplaceWith = globalReplaceWith;
     this.anonymize = anonymize;
+    this.aggressive = aggressive;
 
     // Build active rule set - all rules enabled by default
     const defaultRules = { CREDIT_CARD: true, EMAIL: true, NAME: true, PHONE: true, SSN: true };
@@ -49,13 +52,17 @@ export class Redactor {
     rules: NonNullable<RedactorOptions['rules']>,
     customRules: RegExp[],
   ): Array<{ pattern: RegExp; name: string }> {
-    const rulePatterns: Record<string, { pattern: RegExp; name: string }> = {
+    // Normal mode patterns - balanced precision
+    const normalPatterns: Record<string, { pattern: RegExp; name: string }> = {
       CREDIT_CARD: {
-        pattern: /\d{4}[ -]?\d{4}[ -]?\d{4}[ -]?\d{4}|\d{4}[ -]?\d{6}[ -]?\d{4}\d?/g,
+        // Matches common credit card formats (16 digits)
+        pattern: /\b\d{4}[ -]?\d{4}[ -]?\d{4}[ -]?\d{4}\b|\b\d{4}[ -]?\d{6}[ -]?\d{4,5}\b/g,
         name: 'CREDIT_CARD',
       },
       EMAIL: {
-        pattern: /([a-z0-9_\-.+]+)@\w+(\.\w+)*/gi,
+        // Improved email pattern - requires valid TLD
+        // No \b at end to handle cases like "email@example.com555"
+        pattern: /\b[a-z0-9][a-z0-9._-]*@[a-z0-9][\w.-]*\.[a-z]{2,}/gi,
         name: 'EMAIL',
       },
       NAME: {
@@ -63,8 +70,8 @@ export class Redactor {
         name: 'PERSON_NAME',
       },
       PHONE: {
-        pattern:
-          /(\(?\+?[0-9]{1,2}\)?[-. ]?)?(\(?[0-9]{3}\)?[-. ]?[0-9]{3,4}[-. ]?[0-9]{4}|[0-9]{3}[-. ]?[0-9]{4}|[0-9]{4}[-. ]?[0-9]{4}|\b[A-Z0-9]{7}\b)/g,
+        // US phone numbers with various formats
+        pattern: /\b(?:\+?1[-.\s]?)?(?:\(?\d{3}\)?[-.\s]?)?\d{3}[-.\s]?\d{4}\b/g,
         name: 'PHONE_NUMBER',
       },
       SSN: {
@@ -73,6 +80,38 @@ export class Redactor {
       },
     };
 
+    // Aggressive mode patterns - more permissive, catches obfuscation
+    const aggressivePatterns: Record<string, { pattern: RegExp; name: string }> = {
+      CREDIT_CARD: {
+        // Catches more variations including partial masking
+        pattern: /\b(?:\d[ -]?){13,19}\b|\*{4}[ -]?\*{4}[ -]?\*{4}[ -]?\d{4}/g,
+        name: 'CREDIT_CARD',
+      },
+      EMAIL: {
+        // Catches obfuscated emails like "user [at] domain [dot] com"
+        pattern:
+          /\b[a-z0-9][a-z0-9._-]*\s*(?:@|\[at\]|\(at\))\s*[a-z0-9][\w.-]*\s*(?:\.|\[dot\]|\(dot\))\s*[a-z]{2,}\b/gi,
+        name: 'EMAIL',
+      },
+      NAME: {
+        // More permissive name detection
+        pattern:
+          /(?:^|\.\s+|,\s*)(?:dear|hi|hello|greetings|hey|hey there|mr|mrs|ms|dr|prof)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)/gi,
+        name: 'PERSON_NAME',
+      },
+      PHONE: {
+        // More permissive phone matching
+        pattern: /\b(?:\+?1[-.\s]?)?(?:\(?\d{3}\)?[-.\s]?)?\d{3}[-.\s]?\d{4}\b|\b\d{3}[-.\s]\d{4}\b/g,
+        name: 'PHONE_NUMBER',
+      },
+      SSN: {
+        // Catches SSN with various separators or no separators
+        pattern: /\b\d{3}[ -.]?\d{2}[ -.]?\d{4}\b/g,
+        name: 'US_SOCIAL_SECURITY_NUMBER',
+      },
+    };
+
+    const rulePatterns = this.aggressive ? aggressivePatterns : normalPatterns;
     const activeRules: Array<{ pattern: RegExp; name: string }> = [];
 
     // Add enabled built-in rules
@@ -91,14 +130,21 @@ export class Redactor {
   }
 
   /**
+   * Clone a regex pattern to avoid state issues with global flag
+   */
+  private _clonePattern(pattern: RegExp): RegExp {
+    return new RegExp(pattern.source, pattern.flags);
+  }
+
+  /**
    * Checks if text contains any PII patterns without redacting.
    * Returns true if PII is detected, false otherwise.
    */
   hasPII(text: string): boolean {
     for (const { pattern } of this.activeRules) {
-      // Reset regex lastIndex to ensure consistent behavior
-      pattern.lastIndex = 0;
-      if (pattern.test(text)) {
+      // Clone pattern to avoid state issues
+      const clonedPattern = this._clonePattern(pattern);
+      if (clonedPattern.test(text)) {
         return true;
       }
     }
@@ -161,7 +207,9 @@ export class Redactor {
 
     // Apply each rule and collect events during redaction
     for (const { pattern, name } of this.activeRules) {
-      redactedText = redactedText.replace(pattern, (match) => {
+      // Clone pattern to avoid state issues with global regex
+      const clonedPattern = this._clonePattern(pattern);
+      redactedText = redactedText.replace(clonedPattern, (match) => {
         const piiType = name;
         events.push({ pii_type: piiType, action: 'REDACTED' });
 

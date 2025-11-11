@@ -219,13 +219,35 @@ const clean = redactor.redactObject(user);
 // }
 ```
 
+#### Aggressive Mode
+
+More permissive patterns to catch obfuscated or unusual PII formatting.
+
+```typescript
+const redactor = new Redactor({
+  rules: { EMAIL: true, CREDIT_CARD: true },
+  aggressive: true, // Enable aggressive mode
+});
+
+// Catches obfuscated emails
+redactor.redact('user [at] example [dot] com');
+// Result: "EMAIL_ADDRESS"
+
+// Catches partially masked credit cards
+redactor.redact('Card ending in ****-****-****-1234');
+// Result: "Card ending in CREDIT_CARD_NUMBER"
+
+// Normal mode (aggressive: false) is more conservative
+// and won't catch these variations
+```
+
 ### ❓ FAQ & Limitations
 
 **Is this regex-based?**  
 Yes, this library uses regex patterns for detection. It's fast and works offline, but has limitations.
 
 **How does it handle misspellings or improperly formatted data?**  
-It catches misspellings if the format is still valid (e.g., "jhon@example.com" would be detected because it's still a valid email format). However, it won't catch obfuscated or non-standard formats like "john at example dot com" or "john[at]example[dot]com". The patterns handle common formatting variations (spaces, dashes, dots) but require the data to follow standard formats.
+It catches misspellings if the format is still valid (e.g., "jhon@example.com" would be detected because it's still a valid email format). However, it won't catch obfuscated or non-standard formats like "john at example dot com" or "john[at]example[dot]com" unless you enable `aggressive: true` mode, which uses more permissive patterns.
 
 **What determines what counts as PII?**  
 The built-in patterns cover common, obvious PII types (emails, SSNs, credit cards, phone numbers, names in greetings). These are based on standard formats, not a specific compliance framework. For your specific needs, use `customRules` to add domain-specific patterns.

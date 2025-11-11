@@ -403,5 +403,89 @@ describe('Redactor', () => {
       expect(redactor.redact('   ')).toBe('   ');
       expect(redactor.redact('\n\n')).toBe('\n\n');
     });
+
+    it('should handle very long strings without performance degradation', () => {
+      const redactor = new Redactor({ rules: { EMAIL: true } });
+      const longText = 'Contact test@example.com '.repeat(1000);
+      const startTime = Date.now();
+      const result = redactor.redact(longText);
+      const endTime = Date.now();
+      expect(result).toContain('EMAIL');
+      expect(endTime - startTime).toBeLessThan(1000); // Should complete in < 1 second
+    });
+
+    it('should handle consecutive PII items', () => {
+      const redactor = new Redactor({ rules: { EMAIL: true, PHONE: true } });
+      const result = redactor.redact('test@example.com555-123-4567');
+      expect(result).toContain('EMAIL');
+      expect(result).toContain('PHONE');
+    });
+
+    it('should not redact incomplete emails', () => {
+      const redactor = new Redactor({ rules: { EMAIL: true } });
+      const result = redactor.redact('test@ or @example.com or test@');
+      expect(result).toBe('test@ or @example.com or test@');
+    });
+
+    it('should handle multiple redact calls without state leakage', () => {
+      const redactor = new Redactor({ rules: { EMAIL: true } });
+      const result1 = redactor.redact('test1@example.com');
+      const result2 = redactor.redact('test2@example.com');
+      expect(result1).toContain('EMAIL');
+      expect(result2).toContain('EMAIL');
+    });
+  });
+
+  describe('Aggressive Mode', () => {
+    it('should catch obfuscated emails in aggressive mode', () => {
+      const redactor = new Redactor({ rules: { EMAIL: true }, aggressive: true });
+      const result1 = redactor.redact('user [at] example [dot] com');
+      const result2 = redactor.redact('user (at) example (dot) com');
+      expect(result1).toContain('EMAIL');
+      expect(result2).toContain('EMAIL');
+    });
+
+    it('should be more conservative in normal mode', () => {
+      const redactor = new Redactor({ rules: { EMAIL: true }, aggressive: false });
+      const result = redactor.redact('user [at] example [dot] com');
+      expect(result).toBe('user [at] example [dot] com');
+    });
+
+    it('should catch partially masked credit cards in aggressive mode', () => {
+      const redactor = new Redactor({ rules: { CREDIT_CARD: true }, aggressive: true });
+      const result = redactor.redact('Card: ****-****-****-1234');
+      expect(result).toContain('CREDIT_CARD');
+    });
+  });
+
+  describe('Robustness', () => {
+    it('should handle unicode characters gracefully', () => {
+      const redactor = new Redactor({ rules: { EMAIL: true } });
+      const result = redactor.redact('Контакт: test@example.com 🎉');
+      expect(result).toContain('EMAIL');
+      expect(result).toContain('🎉');
+    });
+
+    it('should not have catastrophic backtracking', () => {
+      const redactor = new Redactor({ rules: { EMAIL: true } });
+      const malicious = `${'a'.repeat(10000)}@example.com`;
+      const startTime = Date.now();
+      const result = redactor.redact(malicious);
+      const endTime = Date.now();
+      expect(endTime - startTime).toBeLessThan(500); // Should not hang
+      expect(result).toBeDefined();
+    });
+
+    it('should maintain anonymization state consistency', () => {
+      const redactor = new Redactor({ rules: { EMAIL: true }, anonymize: true });
+      const obj = {
+        field1: 'test@example.com',
+        field2: 'other@example.com',
+        field3: 'test@example.com',
+      };
+      const result = redactor.redactObject(obj);
+      expect(result.field1).toBe(result.field3); // Same email should have same token
+      expect(result.field1).not.toBe(result.field2); // Different emails should have different tokens
+    });
   });
 });
