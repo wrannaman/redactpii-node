@@ -1,6 +1,6 @@
 {
   "name": "@redactpii/node",
-  "version": "1.0.8",
+  "version": "1.0.9",
   "type": "module",
   "description": "Zero dependencies, blazing fast regex-based PII redaction with optional compliance dashboard integration. The modern fork of the abandoned 786k-download library.",
   "main": "lib/index.js",
