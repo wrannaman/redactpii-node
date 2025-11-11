@@ -11,6 +11,9 @@ export class Redactor {
   private hookTimeout: number;
   private activeRules: Array<{ pattern: RegExp; name: string }> = [];
   private globalReplaceWith: string | undefined;
+  private anonymize: boolean;
+  private anonymizationMap: Map<string, string> = new Map();
+  private anonymizationCounters: Map<string, number> = new Map();
 
   constructor(options: RedactorOptions = {}) {
     const {
@@ -21,6 +24,7 @@ export class Redactor {
       rules,
       customRules = [],
       globalReplaceWith,
+      anonymize = false,
     } = options;
 
     // Only set apiUrl if apiKey is provided (dashboard is being used)
@@ -31,6 +35,7 @@ export class Redactor {
     this.failSilent = failSilent;
     this.hookTimeout = hookTimeout;
     this.globalReplaceWith = globalReplaceWith;
+    this.anonymize = anonymize;
 
     // Build active rule set - all rules enabled by default
     const defaultRules = { CREDIT_CARD: true, EMAIL: true, NAME: true, PHONE: true, SSN: true };
@@ -108,8 +113,15 @@ export class Redactor {
     // Deep clone using JSON serialization
     const redacted: unknown = JSON.parse(JSON.stringify(obj));
 
+    // Reset anonymization state once for the entire object
+    if (this.anonymize) {
+      this.anonymizationMap.clear();
+      this.anonymizationCounters.clear();
+    }
+
     const redactString = (str: string): string => {
-      return this.redact(str);
+      // Use internal redaction logic without resetting state
+      return this._redactString(str, false);
     };
 
     const processValue = (value: unknown): unknown => {
@@ -135,18 +147,44 @@ export class Redactor {
   }
 
   /**
-   * Redacts PII from the input text using regex-based patterns.
-   * If an apiKey is configured, asynchronously sends metadata to the dashboard.
+   * Internal redaction logic that can optionally reset anonymization state
    */
-  redact(text: string): string {
+  private _redactString(text: string, resetState: boolean): string {
     const events: RedactionEvent[] = [];
     let redactedText = text;
 
+    // Reset anonymization tracking if requested
+    if (resetState && this.anonymize) {
+      this.anonymizationMap.clear();
+      this.anonymizationCounters.clear();
+    }
+
     // Apply each rule and collect events during redaction
     for (const { pattern, name } of this.activeRules) {
-      redactedText = redactedText.replace(pattern, () => {
+      redactedText = redactedText.replace(pattern, (match) => {
         const piiType = name;
         events.push({ pii_type: piiType, action: 'REDACTED' });
+
+        // Anonymization: same value gets same token
+        if (this.anonymize) {
+          const normalizedMatch = match.toLowerCase();
+          const key = `${piiType}:${normalizedMatch}`;
+
+          if (this.anonymizationMap.has(key)) {
+            return this.anonymizationMap.get(key) ?? match;
+          }
+
+          // Generate new token
+          const counter = (this.anonymizationCounters.get(piiType) ?? 0) + 1;
+          this.anonymizationCounters.set(piiType, counter);
+
+          // Map PII type to token prefix
+          const tokenPrefix = this._getTokenPrefix(piiType);
+          const token = `${tokenPrefix}_${counter}`;
+          this.anonymizationMap.set(key, token);
+
+          return token;
+        }
 
         // Use globalReplaceWith if provided, otherwise use type-specific replacements
         if (this.globalReplaceWith !== undefined) {
@@ -171,19 +209,49 @@ export class Redactor {
       });
     }
 
-    // Send events to dashboard if configured
-    const hasValidApiKey = this.apiKey !== null && this.apiKey !== '';
-    if (hasValidApiKey && events.length > 0) {
-      // Fire and forget - intentionally not awaiting
-      this._phoneHome(events).catch(() => {
-        if (this.failSilent === false) {
-          throw new Error('Dashboard hook failed');
-        }
-        // Fail silently by default
-      });
+    // Send events to dashboard if configured (only for top-level redact calls)
+    if (resetState) {
+      const hasValidApiKey = this.apiKey !== null && this.apiKey !== '';
+      if (hasValidApiKey && events.length > 0) {
+        // Fire and forget - intentionally not awaiting
+        this._phoneHome(events).catch(() => {
+          if (this.failSilent === false) {
+            throw new Error('Dashboard hook failed');
+          }
+          // Fail silently by default
+        });
+      }
     }
 
     return redactedText;
+  }
+
+  /**
+   * Redacts PII from the input text using regex-based patterns.
+   * If an apiKey is configured, asynchronously sends metadata to the dashboard.
+   */
+  redact(text: string): string {
+    return this._redactString(text, true);
+  }
+
+  /**
+   * Maps PII type to token prefix for anonymization
+   */
+  private _getTokenPrefix(piiType: string): string {
+    switch (piiType) {
+      case 'CREDIT_CARD':
+        return 'CREDIT_CARD';
+      case 'EMAIL':
+        return 'EMAIL';
+      case 'PERSON_NAME':
+        return 'PERSON';
+      case 'PHONE_NUMBER':
+        return 'PHONE';
+      case 'US_SOCIAL_SECURITY_NUMBER':
+        return 'SSN';
+      default:
+        return 'PII';
+    }
   }
 
   /**

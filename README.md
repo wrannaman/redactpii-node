@@ -190,6 +190,58 @@ const redactor = new Redactor({
 redactor.redact('test@example.com'); // "[REDACTED]"
 ```
 
+#### Anonymization with Unique IDs
+
+Replace the same PII value with the same token throughout the text. Perfect for preserving relationships while protecting privacy.
+
+```typescript
+const redactor = new Redactor({
+  rules: { EMAIL: true, NAME: true },
+  anonymize: true, // Enable anonymization
+});
+
+// Same email gets same token
+const text = 'Contact anne@example.com. Anne also uses anne@example.com for work.';
+const result = redactor.redact(text);
+// Result: "Contact EMAIL_1. PERSON_1 also uses EMAIL_1 for work."
+
+// Works across objects too
+const user = {
+  primary: 'anne@example.com',
+  backup: 'anne@example.com', // Same value → same token
+  contact: 'bob@example.com', // Different value → different token
+};
+const clean = redactor.redactObject(user);
+// {
+//   primary: 'EMAIL_1',
+//   backup: 'EMAIL_1',    // Same as primary
+//   contact: 'EMAIL_2'    // Different token
+// }
+```
+
+### ❓ FAQ & Limitations
+
+**Is this regex-based?**  
+Yes, this library uses regex patterns for detection. It's fast and works offline, but has limitations.
+
+**How does it handle misspellings or improperly formatted data?**  
+It catches misspellings if the format is still valid (e.g., "jhon@example.com" would be detected because it's still a valid email format). However, it won't catch obfuscated or non-standard formats like "john at example dot com" or "john[at]example[dot]com". The patterns handle common formatting variations (spaces, dashes, dots) but require the data to follow standard formats.
+
+**What determines what counts as PII?**  
+The built-in patterns cover common, obvious PII types (emails, SSNs, credit cards, phone numbers, names in greetings). These are based on standard formats, not a specific compliance framework. For your specific needs, use `customRules` to add domain-specific patterns.
+
+**Anonymization vs Redaction?**  
+By default, this library does **redaction** (replacement with labels like `EMAIL_ADDRESS`). However, you can enable **anonymization** by setting `anonymize: true`, which replaces the same PII value with the same unique token (e.g., `EMAIL_1`, `EMAIL_2`) throughout the text, preserving relationships while protecting privacy.
+
+**When should I use this?**
+
+- ✅ Quick redaction of well-formatted, standard PII
+- ✅ Pre-processing before sending data to LLMs/APIs
+- ✅ Simple compliance needs where redaction is sufficient
+- ❌ Complex anonymization requirements
+- ❌ Handling messy/unstructured data with misspellings
+- ❌ Need for reversible anonymization
+
 ## 🧪 Quality Assurance
 
 - **34 comprehensive tests** covering all APIs and edge cases

@@ -76,6 +76,38 @@ describe('Redactor', () => {
       const text = 'This is plain text with no sensitive information';
       expect(redactor.redact(text)).toBe(text);
     });
+
+    it('should anonymize with unique IDs when enabled', () => {
+      const redactor = new Redactor({ rules: { EMAIL: true }, anonymize: true });
+      const result = redactor.redact('Contact anne@example.com and anne@example.com again');
+      expect(result).toContain('EMAIL_1');
+      expect(result).not.toContain('anne@example.com');
+      // Same email should get same token
+      const matches = result.match(/EMAIL_\d+/g);
+      expect(matches?.every((val) => val === matches[0])).toBe(true);
+    });
+
+    it('should give different tokens to different values when anonymizing', () => {
+      const redactor = new Redactor({ rules: { EMAIL: true }, anonymize: true });
+      const result = redactor.redact('Contact anne@example.com and bob@example.com');
+      expect(result).toContain('EMAIL_1');
+      expect(result).toContain('EMAIL_2');
+      expect(result).not.toContain('anne@example.com');
+      expect(result).not.toContain('bob@example.com');
+    });
+
+    it('should anonymize across object properties', () => {
+      const redactor = new Redactor({ rules: { EMAIL: true }, anonymize: true });
+      const obj = {
+        user1: 'anne@example.com',
+        user2: 'anne@example.com',
+        user3: 'bob@example.com',
+      };
+      const result = redactor.redactObject(obj);
+      expect(result.user1).toBe('EMAIL_1');
+      expect(result.user2).toBe('EMAIL_1'); // Same value, same token
+      expect(result.user3).toBe('EMAIL_2'); // Different value, different token
+    });
   });
 
   describe('hasPII', () => {
