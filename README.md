@@ -4,21 +4,9 @@
 
 > **🔒 Simple PII redaction library for Node.js**
 
-A fast, zero-dependency library that redacts PII from text. Works completely offline. No API keys, no setup, just install and use.
+A fast, zero-dependency library that redacts PII from text using regex patterns. Works completely offline. No API keys, no setup, just install and use.
 
-## ⚡ Features
-
-- **<1ms per operation** - Optimized regex engine
-- **Zero dependencies** - Pure TypeScript, no bloat
-- **Works offline** - No internet or API keys needed
-- **TypeScript** - Full type safety and IDE support
-
-### Requirements
-
-- **Node.js 18+**
-- **TypeScript 5.0+** (optional, but recommended)
-
-## 🚀 Installation & Usage
+## 🚀 Installation
 
 ```bash
 npm install @redactpii/node
@@ -28,7 +16,7 @@ pnpm add @redactpii/node
 yarn add @redactpii/node
 ```
 
-### 🔥 Quick Start
+## 🔥 Quick Start
 
 ```typescript
 import { Redactor } from '@redactpii/node';
@@ -38,9 +26,9 @@ const clean = redactor.redact('Hi David Johnson, call 555-555-5555');
 // Result: "Hi PERSON_NAME, call PHONE_NUMBER"
 ```
 
-### 🎯 PII Detection
+## 🎯 Built-in PII Detection Patterns
 
-Built-in patterns for:
+The library includes regex patterns for:
 
 - **👤 Names** - Person identification (greeting-based detection)
 - **📧 Emails** - Email addresses
@@ -48,19 +36,18 @@ Built-in patterns for:
 - **💳 Credit Cards** - Visa, Mastercard, Amex, Diners Club
 - **🆔 SSN** - US Social Security Numbers
 
-### 🔍 Check for PII Without Redacting
+## 🔍 Check for PII Without Redacting
 
 ```typescript
 const redactor = new Redactor({ rules: { EMAIL: true } });
 
 if (redactor.hasPII('Contact test@example.com for details')) {
   console.log('PII detected!');
-  // Now redact it
   const clean = redactor.redact('Contact test@example.com for details');
 }
 ```
 
-### 📦 Redact Objects
+## 📦 Redact Objects
 
 ```typescript
 const redactor = new Redactor({ rules: { EMAIL: true } });
@@ -83,70 +70,11 @@ const clean = redactor.redactObject(user);
 // }
 ```
 
-### 🤖 Using with LLMs (OpenAI, LangChain)
+## 🎨 Customization
 
-Protect PII **before** it hits AI APIs.
+### Configure Rules
 
-<details>
-<summary><b>Example: Using with OpenAI Client</b></summary>
-
-```typescript
-import { Redactor } from '@redactpii/node';
-import OpenAI from 'openai';
-
-const redactor = new Redactor({
-  rules: { SSN: true, EMAIL: true },
-});
-
-const openai = new OpenAI();
-
-// 1. Redact the prompt BEFORE you send it
-const rawPrompt = 'My SSN is 123-45-6789 and my email is test@example.com';
-const safePrompt = redactor.redact(rawPrompt);
-
-// 2. Send the "safe" prompt to the LLM
-const completion = await openai.chat.completions.create({
-  messages: [{ role: 'user', content: safePrompt }],
-  model: 'gpt-4o',
-});
-```
-
-</details>
-
-<details>
-<summary><b>Example: Using with LangChain</b></summary>
-
-```typescript
-import { Redactor } from '@redactpii/node';
-import { ChatOpenAI } from '@langchain/openai';
-
-const redactor = new Redactor({
-  rules: { EMAIL: true },
-});
-const model = new ChatOpenAI();
-
-// Create a "runnable" middleware to redact input
-const redactingMiddleware = (input: { query: string }) => {
-  if (redactor.hasPII(input.query)) {
-    const safeQuery = redactor.redact(input.query);
-    return { ...input, query: safeQuery };
-  }
-  return input;
-};
-
-// Build your chain
-const chain = redactingMiddleware.pipe(model);
-// ... etc
-
-// Run the chain with PII
-const result = await chain.invoke({ query: 'My email is john@acme.com' });
-```
-
-</details>
-
-### 🎨 Customization
-
-#### Configure Rules
+Enable or disable specific PII detection patterns:
 
 ```typescript
 const redactor = new Redactor({
@@ -160,7 +88,9 @@ const redactor = new Redactor({
 });
 ```
 
-#### Custom Regex Patterns
+### Custom Regex Patterns
+
+Add your own regex patterns for domain-specific PII:
 
 ```typescript
 const redactor = new Redactor({
@@ -172,7 +102,9 @@ const redactor = new Redactor({
 });
 ```
 
-#### Global Replacement
+### Global Replacement
+
+Use a single replacement string for all PII types:
 
 ```typescript
 const redactor = new Redactor({
@@ -183,9 +115,9 @@ const redactor = new Redactor({
 redactor.redact('test@example.com'); // "[REDACTED]"
 ```
 
-#### Anonymization with Unique IDs
+### Anonymization with Unique IDs
 
-Replace the same PII value with the same token throughout the text. Perfect for preserving relationships while protecting privacy.
+Replace the same PII value with the same token throughout the text:
 
 ```typescript
 const redactor = new Redactor({
@@ -212,9 +144,9 @@ const clean = redactor.redactObject(user);
 // }
 ```
 
-#### Aggressive Mode
+### Aggressive Mode
 
-More permissive patterns to catch obfuscated or unusual PII formatting.
+Use more permissive regex patterns to catch obfuscated or unusual PII formatting:
 
 ```typescript
 const redactor = new Redactor({
@@ -234,7 +166,7 @@ redactor.redact('Card ending in ****-****-****-1234');
 // and won't catch these variations
 ```
 
-### ❓ FAQ & Limitations
+## ❓ FAQ
 
 **Is this regex-based?**  
 Yes, this library uses regex patterns for detection. It's fast and works offline, but has limitations.
@@ -247,43 +179,3 @@ The built-in patterns cover common, obvious PII types (emails, SSNs, credit card
 
 **Anonymization vs Redaction?**  
 By default, this library does **redaction** (replacement with labels like `EMAIL_ADDRESS`). However, you can enable **anonymization** by setting `anonymize: true`, which replaces the same PII value with the same unique token (e.g., `EMAIL_1`, `EMAIL_2`) throughout the text, preserving relationships while protecting privacy.
-
-**When should I use this?**
-
-- ✅ Quick redaction of well-formatted, standard PII
-- ✅ Pre-processing before sending data to LLMs/APIs
-- ✅ Local, offline PII redaction
-- ❌ Handling messy/unstructured data with misspellings
-- ❌ Need for reversible anonymization
-
-## 🧪 Quality Assurance
-
-- **34+ comprehensive tests** covering all APIs and edge cases
-- **100% TypeScript** with strict mode
-- **Zero unsafe operations** - full type safety
-- **Pre-commit hooks** - automatic linting and type checking
-
-### 🏃‍♂️ Development
-
-```bash
-# Install dependencies
-pnpm install
-
-# Run tests
-pnpm test
-
-# Run with coverage
-pnpm run coverage
-
-# Type checking
-pnpm run typecheck
-
-# Linting
-pnpm run lint
-
-# Full verification suite
-pnpm run verify_all
-
-# Build for production
-pnpm run build
-```
