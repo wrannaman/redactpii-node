@@ -37,6 +37,9 @@
   "homepage": "https://redactpii.com",
   "author": "Andrew Pierno - RedactPII Team",
   "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
   "files": [
     "lib",
     "README.md",
