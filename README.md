@@ -36,6 +36,44 @@ The library includes regex patterns for:
 - **💳 Credit Cards** - Visa, Mastercard, Amex, Diners Club
 - **🆔 SSN** - US Social Security Numbers
 
+## 🤖 Use with AI APIs
+
+Protect user data before sending to OpenAI, Anthropic, or other LLM providers:
+
+```typescript
+import { Redactor } from '@redactpii/node';
+import OpenAI from 'openai';
+
+const redactor = new Redactor();
+const openai = new OpenAI();
+
+// Redact before sending to OpenAI
+const userMessage = 'Hi, my email is john@example.com and my phone is 555-123-4567';
+const cleanMessage = redactor.redact(userMessage);
+// "Hi, my email is EMAIL_ADDRESS and my phone is PHONE_NUMBER"
+
+const completion = await openai.chat.completions.create({
+  messages: [{ role: 'user', content: cleanMessage }],
+  model: 'gpt-4',
+});
+```
+
+Works with any API that accepts JSON:
+
+```typescript
+// Redact entire request payloads
+const apiRequest = {
+  user: {
+    name: 'John Doe',
+    email: 'john@example.com',
+    notes: 'Call me at 555-123-4567',
+  },
+};
+
+const cleanRequest = redactor.redactObject(apiRequest);
+// Send cleanRequest to your AI service
+```
+
 ## 🔍 Check for PII Without Redacting
 
 ```typescript
