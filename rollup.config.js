@@ -3,7 +3,7 @@ import typescript from '@rollup/plugin-typescript';
 import json from '@rollup/plugin-json';
 
 export default {
-  input: 'lib/src/index.js',
+  input: 'lib/index.js',
   output: [
     {
       file: 'lib/index.mjs',

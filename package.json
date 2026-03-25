@@ -15,7 +15,7 @@
   },
   "packageManager": "pnpm@10.20.0",
   "scripts": {
-    "build": "del lib && tsc --pretty && rollup -c",
+    "build": "del lib && tsc -p tsconfig.build.json --pretty && rollup -c",
     "typecheck": "tsc --noEmit",
     "lint": "eslint 'src/**/*.ts' 'test/**/*.ts'",
     "lint:fix": "eslint 'src/**/*.ts' 'test/**/*.ts' --fix",
