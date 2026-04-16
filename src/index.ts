@@ -1,5 +1,5 @@
-import { Redactor } from './Redactor';
-import type { RedactorOptions, RedactionEvent } from './types';
+import { Redactor } from './Redactor.js';
+import type { RedactorOptions, RedactionEvent } from './types.js';
 
 // Main export - the Redactor class
 export { Redactor };

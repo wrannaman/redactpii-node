@@ -1,4 +1,4 @@
-import { type RedactorOptions, type RedactionEvent } from './types';
+import { type RedactorOptions, type RedactionEvent } from './types.js';
 
 /**
  * Main Redactor class that provides PII redaction with optional dashboard integration.
