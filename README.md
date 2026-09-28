@@ -23,22 +23,22 @@ import { Redactor } from '@redactpii/node';
 
 const redactor = new Redactor();
 const clean = redactor.redact('Hi David Johnson, call 555-555-5555');
-// Result: "Hi PERSON_NAME, call PHONE_NUMBER"
+// Result: "PERSON_NAME, call PHONE_NUMBER"
 ```
 
 ## 🎯 Built-in PII Detection Patterns
 
 The library includes regex patterns for:
 
-- **👤 Names** - Person identification (greeting-based detection)
-- **📧 Emails** - Email addresses
-- **📞 Phones** - US phone numbers (all formats)
+- **👤 Names** - Full names that follow a greeting ("Hi Jane Doe", "Dear Jane Doe"). Names elsewhere in text are not detected.
+- **📧 Emails** - Email addresses, including plus-addressing (`jane+news@example.com`) and non-ASCII addresses (`müller@example.de`)
+- **📞 Phones** - US phone numbers (`555-123-4567`, `(555) 123-4567`, `+1 555 123 4567`)
 - **💳 Credit Cards** - Visa, Mastercard, Amex, Diners Club
 - **🆔 SSN** - US Social Security Numbers
 
 ## 🤖 Use with AI APIs
 
-Protect user data before sending to OpenAI, Anthropic, or other LLM providers:
+Redact user data before sending it to OpenAI, Anthropic, or any other LLM provider:
 
 ```typescript
 import { Redactor } from '@redactpii/node';
@@ -52,9 +52,9 @@ const userMessage = 'Hi, my email is john@example.com and my phone is 555-123-45
 const cleanMessage = redactor.redact(userMessage);
 // "Hi, my email is EMAIL_ADDRESS and my phone is PHONE_NUMBER"
 
-const completion = await openai.chat.completions.create({
-  messages: [{ role: 'user', content: cleanMessage }],
-  model: 'gpt-4',
+const response = await openai.responses.create({
+  model: 'gpt-5.6',
+  input: cleanMessage,
 });
 ```
 
@@ -71,7 +71,9 @@ const apiRequest = {
 };
 
 const cleanRequest = redactor.redactObject(apiRequest);
-// Send cleanRequest to your AI service
+// { user: { name: 'John Doe', email: 'EMAIL_ADDRESS', notes: 'Call me at PHONE_NUMBER' } }
+// Only string values are redacted; keys are left as-is. `name` is not redacted
+// because name detection only looks for names after a greeting.
 ```
 
 ## 🔍 Check for PII Without Redacting
@@ -128,7 +130,7 @@ const redactor = new Redactor({
 
 ### Custom Regex Patterns
 
-Add your own regex patterns for domain-specific PII:
+Add your own regex patterns for domain-specific PII. Every match is redacted, whether or not the pattern has the `g` flag; custom matches are replaced with `DIGITS`:
 
 ```typescript
 const redactor = new Redactor({
@@ -163,10 +165,10 @@ const redactor = new Redactor({
   anonymize: true, // Enable anonymization
 });
 
-// Same email gets same token
-const text = 'Contact anne@example.com. Anne also uses anne@example.com for work.';
+// Same value gets same token
+const text = 'Hi Anne Smith, your login is anne@example.com and your backup is bob@example.com. Hi Anne Smith again.';
 const result = redactor.redact(text);
-// Result: "Contact EMAIL_1. PERSON_1 also uses EMAIL_1 for work."
+// Result: "PERSON_1, your login is EMAIL_1 and your backup is EMAIL_2. PERSON_1 again."
 
 // Works across objects too
 const user = {
@@ -212,8 +214,14 @@ Yes, this library uses regex patterns for detection. It's fast and works offline
 **How does it handle misspellings or improperly formatted data?**  
 It catches misspellings if the format is still valid (e.g., "jhon@example.com" would be detected because it's still a valid email format). However, it won't catch obfuscated or non-standard formats like "john at example dot com" or "john[at]example[dot]com" unless you enable `aggressive: true` mode, which uses more permissive patterns.
 
+**What doesn't it catch?**  
+International phone numbers, SSNs without separators (`123456789`), names outside a greeting, addresses, and dates of birth. Use `customRules` for these, or pair this library with an ML-based detector if you need recall beyond fixed formats.
+
+**Is it safe on untrusted input?**  
+Yes. Every built-in pattern runs in linear time. Long tokens, JWTs, and log lines don't cause catastrophic backtracking. Your own `customRules` are not checked for this, so write them carefully.
+
 **What determines what counts as PII?**  
 The built-in patterns cover common, obvious PII types (emails, SSNs, credit cards, phone numbers, names in greetings). These are based on standard formats, not a specific compliance framework. For your specific needs, use `customRules` to add domain-specific patterns.
 
 **Anonymization vs Redaction?**  
-By default, this library does **redaction** (replacement with labels like `EMAIL_ADDRESS`). However, you can enable **anonymization** by setting `anonymize: true`, which replaces the same PII value with the same unique token (e.g., `EMAIL_1`, `EMAIL_2`) throughout the text, preserving relationships while protecting privacy.
+By default, this library does **redaction** (replacement with labels like `EMAIL_ADDRESS`). With `anonymize: true`, the same value gets the same token (`EMAIL_1`, `EMAIL_2`) within one `redact()` or `redactObject()` call. Token numbering restarts on each call, so `EMAIL_1` in two different calls can refer to different addresses.
