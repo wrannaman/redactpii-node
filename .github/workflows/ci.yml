@@ -49,6 +49,10 @@ jobs:
     needs: test
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
+    # Trusted publishing: npm verifies this workflow via OIDC, so no NPM_TOKEN secret is needed
+    permissions:
+      contents: read
+      id-token: write
 
     steps:
       - name: Checkout code
@@ -69,10 +73,6 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build
-        run: pnpm run build
-
+      # npm CLI (not pnpm) handles the OIDC exchange; prepublishOnly runs the checks and build
       - name: Publish to NPM
-        run: pnpm publish --access public --no-git-checks
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --access public
