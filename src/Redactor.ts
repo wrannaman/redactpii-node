@@ -62,16 +62,24 @@ export class Redactor {
       EMAIL: {
         // Improved email pattern - requires valid TLD
         // No \b at end to handle cases like "email@example.com555"
-        pattern: /\b[a-z0-9][a-z0-9._-]*@[a-z0-9][\w.-]*\.[a-z]{2,}/gi,
+        // Lookbehind (not \b) anchors to the start of the local-part run so a long
+        // @-less token is scanned once instead of from every word boundary (O(n^2)).
+        // \p{L}/\p{N} so non-ASCII addresses (müller@, josé@) are caught whole.
+        pattern:
+          /(?<![\p{L}\p{N}._%+-]|[\p{L}\p{N}]')[\p{L}\p{N}][\p{L}\p{N}._%+'-]*@[\p{L}\p{N}][\p{L}\p{N}_.-]*\.\p{L}{2,}/giu,
         name: 'EMAIL',
       },
       NAME: {
-        pattern: /(?:^|\.\s+)(?:dear|hi|hello|greetings|hey|hey there)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)/gi,
+        // Case-sensitive on purpose: with the `i` flag [A-Z] also matched lowercase words.
+        // The leading lookahead keeps the variable-length lookbehind off every position.
+        pattern:
+          /(?=[DdHhGg])(?<=(?:^|[.!?\n])\s*)(?:[Dd]ear|[Hh]i|[Hh]ello|[Gg]reetings|[Hh]ey(?:\s+[Tt]here)?)\s+\p{Lu}[\p{L}'’-]*\p{Ll}(?:[ \t]+\p{Lu}[\p{L}'’-]*\p{Ll})+/gu,
         name: 'PERSON_NAME',
       },
       PHONE: {
         // US phone numbers with various formats
-        pattern: /\b(?:\+?1[-.\s]?)?(?:\(?\d{3}\)?[-.\s]?)?\d{3}[-.\s]?\d{4}\b/g,
+        // (?<!\w) rather than \b so a leading "(" or "+" is redacted with the number
+        pattern: /(?<!\w)(?:\+?1[-.\s]?)?(?:\(?\d{3}\)?[-.\s]?)?\d{3}[-.\s]?\d{4}\b/g,
         name: 'PHONE_NUMBER',
       },
       SSN: {
@@ -90,18 +98,18 @@ export class Redactor {
       EMAIL: {
         // Catches obfuscated emails like "user [at] domain [dot] com"
         pattern:
-          /\b[a-z0-9][a-z0-9._-]*\s*(?:@|\[at\]|\(at\))\s*[a-z0-9][\w.-]*\s*(?:\.|\[dot\]|\(dot\))\s*[a-z]{2,}\b/gi,
+          /(?<![\p{L}\p{N}._%+-]|[\p{L}\p{N}]')[\p{L}\p{N}][\p{L}\p{N}._%+'-]*\s*(?:@|\[at\]|\(at\))\s*[\p{L}\p{N}][\p{L}\p{N}_.-]*\s*(?:\.|\[dot\]|\(dot\))\s*\p{L}{2,}(?![\p{L}\p{N}_])/giu,
         name: 'EMAIL',
       },
       NAME: {
         // More permissive name detection
         pattern:
-          /(?:^|\.\s+|,\s*)(?:dear|hi|hello|greetings|hey|hey there|mr|mrs|ms|dr|prof)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)/gi,
+          /(?=[DdHhGgMmPp])(?<=(?:^|[.!?\n,])\s*)(?:[Dd]ear|[Hh]i|[Hh]ello|[Gg]reetings|[Hh]ey(?:\s+[Tt]here)?|[Mm][Rr][Ss]?\.?|[Mm][Ss]\.?|[Dd][Rr]\.?|[Pp]rof\.?)\s+\p{Lu}[\p{L}'’-]*\p{Ll}(?:[ \t]+\p{Lu}[\p{L}'’-]*\p{Ll})*/gu,
         name: 'PERSON_NAME',
       },
       PHONE: {
         // More permissive phone matching
-        pattern: /\b(?:\+?1[-.\s]?)?(?:\(?\d{3}\)?[-.\s]?)?\d{3}[-.\s]?\d{4}\b|\b\d{3}[-.\s]\d{4}\b/g,
+        pattern: /(?<!\w)(?:\+?1[-.\s]?)?(?:\(?\d{3}\)?[-.\s]?)?\d{3}[-.\s]?\d{4}\b|\b\d{3}[-.\s]\d{4}\b/g,
         name: 'PHONE_NUMBER',
       },
       SSN: {
@@ -130,10 +138,12 @@ export class Redactor {
   }
 
   /**
-   * Clone a regex pattern to avoid state issues with global flag
+   * Clone a regex pattern to avoid lastIndex state issues. Always global (a custom rule
+   * without /g would otherwise redact only its first match) and never sticky.
    */
   private _clonePattern(pattern: RegExp): RegExp {
-    return new RegExp(pattern.source, pattern.flags);
+    const flags = pattern.flags.replace('y', '');
+    return new RegExp(pattern.source, flags.includes('g') ? flags : `${flags}g`);
   }
 
   /**
@@ -197,7 +207,6 @@ export class Redactor {
    */
   private _redactString(text: string, resetState: boolean): string {
     const events: RedactionEvent[] = [];
-    let redactedText = text;
 
     // Reset anonymization tracking if requested
     if (resetState && this.anonymize) {
@@ -205,57 +214,45 @@ export class Redactor {
       this.anonymizationCounters.clear();
     }
 
-    // Apply each rule and collect events during redaction
+    // Match every rule against the original text, then merge overlapping matches. Applying
+    // rules one after another let a later rule split an earlier match (leaking the rest of a
+    // card number) or match inside an earlier replacement token.
+    const spans: Array<{ start: number; end: number; name: string; length: number }> = [];
     for (const { pattern, name } of this.activeRules) {
-      // Clone pattern to avoid state issues with global regex
-      const clonedPattern = this._clonePattern(pattern);
-      redactedText = redactedText.replace(clonedPattern, (match) => {
-        const piiType = name;
-        events.push({ pii_type: piiType, action: 'REDACTED' });
-
-        // Anonymization: same value gets same token
-        if (this.anonymize) {
-          const normalizedMatch = match.toLowerCase();
-          const key = `${piiType}:${normalizedMatch}`;
-
-          if (this.anonymizationMap.has(key)) {
-            return this.anonymizationMap.get(key) ?? match;
-          }
-
-          // Generate new token
-          const counter = (this.anonymizationCounters.get(piiType) ?? 0) + 1;
-          this.anonymizationCounters.set(piiType, counter);
-
-          // Map PII type to token prefix
-          const tokenPrefix = this._getTokenPrefix(piiType);
-          const token = `${tokenPrefix}_${counter}`;
-          this.anonymizationMap.set(key, token);
-
-          return token;
+      for (const match of text.matchAll(this._clonePattern(pattern))) {
+        if (match[0] === '') {
+          continue;
         }
-
-        // Use globalReplaceWith if provided, otherwise use type-specific replacements
-        if (this.globalReplaceWith !== undefined) {
-          return this.globalReplaceWith;
-        }
-
-        // Return appropriate replacement based on PII type
-        switch (piiType) {
-          case 'CREDIT_CARD':
-            return 'CREDIT_CARD_NUMBER';
-          case 'EMAIL':
-            return 'EMAIL_ADDRESS';
-          case 'PERSON_NAME':
-            return 'PERSON_NAME';
-          case 'PHONE_NUMBER':
-            return 'PHONE_NUMBER';
-          case 'US_SOCIAL_SECURITY_NUMBER':
-            return 'US_SOCIAL_SECURITY_NUMBER';
-          default:
-            return 'DIGITS';
-        }
-      });
+        const start = match.index;
+        spans.push({ start, end: start + match[0].length, name, length: match[0].length });
+      }
     }
+    // Stable sort keeps rule order as the tiebreak for identical spans
+    spans.sort((a, b) => (a.start === b.start ? b.end - a.end : a.start - b.start));
+
+    const merged: typeof spans = [];
+    for (const span of spans) {
+      const last = merged[merged.length - 1];
+      if (last !== undefined && span.start < last.end) {
+        last.end = Math.max(last.end, span.end);
+        // The merged span is labelled by its longest member match
+        if (span.length > last.length) {
+          last.name = span.name;
+          last.length = span.length;
+        }
+      } else {
+        merged.push({ ...span });
+      }
+    }
+
+    let redactedText = '';
+    let cursor = 0;
+    for (const { start, end, name } of merged) {
+      events.push({ pii_type: name, action: 'REDACTED' });
+      redactedText += text.slice(cursor, start) + this._replacementFor(name, text.slice(start, end));
+      cursor = end;
+    }
+    redactedText += text.slice(cursor);
 
     // Send events to dashboard if configured (only for top-level redact calls)
     if (resetState) {
@@ -272,6 +269,53 @@ export class Redactor {
     }
 
     return redactedText;
+  }
+
+  /**
+   * Replacement token for a matched PII value
+   */
+  private _replacementFor(piiType: string, match: string): string {
+    // Anonymization: same value gets same token
+    if (this.anonymize) {
+      const normalizedMatch = match.toLowerCase();
+      const key = `${piiType}:${normalizedMatch}`;
+
+      if (this.anonymizationMap.has(key)) {
+        return this.anonymizationMap.get(key) ?? match;
+      }
+
+      // Generate new token
+      const counter = (this.anonymizationCounters.get(piiType) ?? 0) + 1;
+      this.anonymizationCounters.set(piiType, counter);
+
+      // Map PII type to token prefix
+      const tokenPrefix = this._getTokenPrefix(piiType);
+      const token = `${tokenPrefix}_${counter}`;
+      this.anonymizationMap.set(key, token);
+
+      return token;
+    }
+
+    // Use globalReplaceWith if provided, otherwise use type-specific replacements
+    if (this.globalReplaceWith !== undefined) {
+      return this.globalReplaceWith;
+    }
+
+    // Return appropriate replacement based on PII type
+    switch (piiType) {
+      case 'CREDIT_CARD':
+        return 'CREDIT_CARD_NUMBER';
+      case 'EMAIL':
+        return 'EMAIL_ADDRESS';
+      case 'PERSON_NAME':
+        return 'PERSON_NAME';
+      case 'PHONE_NUMBER':
+        return 'PHONE_NUMBER';
+      case 'US_SOCIAL_SECURITY_NUMBER':
+        return 'US_SOCIAL_SECURITY_NUMBER';
+      default:
+        return 'DIGITS';
+    }
   }
 
   /**

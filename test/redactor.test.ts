@@ -529,6 +529,60 @@ describe('Redactor', () => {
   });
 
   describe('Edge Cases', () => {
+    it.each([false, true])('should fully redact plus-addressed and apostrophe emails (aggressive=%s)', (aggressive) => {
+      const redactor = new Redactor({ aggressive, rules: { EMAIL: true } });
+      expect(redactor.redact('a+b@x.com')).toBe('EMAIL_ADDRESS');
+      expect(redactor.redact("o'brien@x.com")).toBe('EMAIL_ADDRESS');
+      expect(redactor.redact('john.doe+news@gmail.com')).toBe('EMAIL_ADDRESS');
+      expect(redactor.redact("'bob@x.com'")).toBe("'EMAIL_ADDRESS'");
+    });
+
+    it('should redact non-ASCII email addresses whole', () => {
+      const redactor = new Redactor({ rules: { EMAIL: true } });
+      expect(redactor.redact('müller@example.de')).toBe('EMAIL_ADDRESS');
+      expect(redactor.redact('josé@example.com')).toBe('EMAIL_ADDRESS');
+    });
+
+    it('should not treat lowercase words after a greeting as a name', () => {
+      const redactor = new Redactor({ rules: { NAME: true } });
+      expect(redactor.redact('hello world how are you')).toBe('hello world how are you');
+      expect(redactor.hasPII('hello world how are you')).toBe(false);
+    });
+
+    it('should detect greeting names after a newline without eating the separator', () => {
+      const redactor = new Redactor({ rules: { NAME: true } });
+      expect(redactor.redact('Thanks!\nHi John Smith, see you')).toBe('Thanks!\nPERSON_NAME, see you');
+      expect(redactor.redact('Thanks. Hi John Smith')).toBe('Thanks. PERSON_NAME');
+    });
+
+    it('should not let rule order split a match', () => {
+      const redactor = new Redactor({ rules: { PHONE: true, CREDIT_CARD: true } });
+      expect(redactor.redact('card 4111 1111 1111 1111')).toBe('card CREDIT_CARD_NUMBER');
+    });
+
+    it('should not re-redact digits inside globalReplaceWith', () => {
+      const redactor = new Redactor({ globalReplaceWith: '[REDACTED 555-1234]' });
+      expect(redactor.redact('bob@x.com 555-123-4567')).toBe('[REDACTED 555-1234] [REDACTED 555-1234]');
+    });
+
+    it('should include a leading parenthesis in phone matches', () => {
+      const redactor = new Redactor({ rules: { PHONE: true } });
+      expect(redactor.redact('call (555) 123-4567 now')).toBe('call PHONE_NUMBER now');
+    });
+
+    it('should apply custom rules globally even without the g flag', () => {
+      const redactor = new Redactor({ rules: {}, customRules: [/secret-\d+/] });
+      expect(redactor.redact('secret-1 and secret-2')).toBe('DIGITS and DIGITS');
+    });
+
+    it.each([false, true])('should scan long @-less tokens in linear time (aggressive=%s)', (aggressive) => {
+      const redactor = new Redactor({ aggressive, rules: { EMAIL: true } });
+      const start = Date.now();
+      redactor.redact(`${'a.'.repeat(50_000)}com`);
+      redactor.redact(`a@${'a.'.repeat(50_000)}`);
+      expect(Date.now() - start).toBeLessThan(200);
+    });
+
     it('should handle PII at start of string', () => {
       const redactor = new Redactor({ rules: { EMAIL: true } });
       expect(redactor.redact('test@example.com is my email')).toContain('EMAIL');
